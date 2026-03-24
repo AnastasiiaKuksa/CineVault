@@ -6,13 +6,13 @@ using Microsoft.AspNetCore.Mvc;
 
 namespace CineVault.API.Controllers;
 
-[ApiVersion("1.0", Deprecated = true)]
-[Route("api/v{version:apiVersion}/[controller]/[action]")]
-public sealed class MoviesController : ControllerBase
+[ApiVersion("2.0")]
+[Route("api/v{version:apiVersion}/Movies/[action]")]
+public sealed class MoviesV2Controller : ControllerBase
 {
     private readonly IMovieRepository movieRepository;
 
-    public MoviesController(IMovieRepository movieRepository)
+    public MoviesV2Controller(IMovieRepository movieRepository)
     {
         this.movieRepository = movieRepository;
     }
@@ -22,7 +22,12 @@ public sealed class MoviesController : ControllerBase
     {
         var movies = await this.movieRepository.GetAll();
         var response = movies.Select(MovieResponse.FromEntity);
-        return base.Ok(response);
+        return base.Ok(new
+        {
+            Version = "v2",
+            Count = response.Count(),
+            Data = response
+        });
     }
 
     [HttpGet("{id}")]
@@ -33,7 +38,11 @@ public sealed class MoviesController : ControllerBase
         {
             return base.NotFound();
         }
-        return base.Ok(MovieResponse.FromEntity(movie));
+        return base.Ok(new
+        {
+            Version = "v2",
+            Data = MovieResponse.FromEntity(movie)
+        });
     }
 
     [HttpPost]

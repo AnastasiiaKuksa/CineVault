@@ -1,9 +1,11 @@
-﻿using Microsoft.AspNetCore.Mvc;
+﻿using Asp.Versioning;
+using Microsoft.AspNetCore.Mvc;
 
 namespace CineVault.API.Controllers;
 
-[ApiController]
-[Route("api")]
+[ApiVersion("1.0", Deprecated = true)]
+[ApiVersion("2.0")]
+[Route("api/v{version:apiVersion}/[controller]")]
 public class AppInfoController : ControllerBase
 {
     private readonly IHostEnvironment _environment;
@@ -13,15 +15,21 @@ public class AppInfoController : ControllerBase
         _environment = environment;
     }
 
-    [HttpGet("environment")]
-    public IActionResult GetEnvironment()
+    [HttpGet("environment"), MapToApiVersion(1.0)]
+    public IActionResult GetEnvironmentV1()
+    {
+        return Ok(_environment.EnvironmentName);
+    }
+
+    [HttpGet("environment"), MapToApiVersion(2.0)]
+    public IActionResult GetEnvironmentV2()
     {
         return Ok(new
         {
+            Version = "v2",
             Environment = _environment.EnvironmentName,
-            // Додаткова логіка для перевірки
-            IsDevelopment = _environment.IsDevelopment(),
-            IsLocal = _environment.IsEnvironment("Local")
+            MachineName = Environment.MachineName,
+            Timestamp = DateTime.UtcNow
         });
     }
 }

@@ -6,13 +6,13 @@ using Microsoft.AspNetCore.Mvc;
 
 namespace CineVault.API.Controllers;
 
-[ApiVersion("1.0", Deprecated = true)]
-[Route("api/v{version:apiVersion}/[controller]/[action]")]
-public sealed class ReviewsController : ControllerBase
+[ApiVersion("2.0")]
+[Route("api/v{version:apiVersion}/Reviews/[action]")]
+public sealed class ReviewsV2Controller : ControllerBase
 {
     private readonly IReviewRepository reviewRepository;
 
-    public ReviewsController(IReviewRepository reviewRepository)
+    public ReviewsV2Controller(IReviewRepository reviewRepository)
     {
         this.reviewRepository = reviewRepository;
     }
@@ -22,7 +22,12 @@ public sealed class ReviewsController : ControllerBase
     {
         var reviews = await this.reviewRepository.GetAllWithDetails();
         var responses = reviews.Select(ReviewResponse.FromEntity);
-        return base.Ok(responses);
+        return base.Ok(new
+        {
+            Version = "v2",
+            Count = responses.Count(),
+            Data = responses
+        });
     }
 
     [HttpGet("{id}")]
@@ -33,7 +38,11 @@ public sealed class ReviewsController : ControllerBase
         {
             return base.NotFound();
         }
-        return base.Ok(ReviewResponse.FromEntity(review));
+        return base.Ok(new
+        {
+            Version = "v2",
+            Data = ReviewResponse.FromEntity(review)
+        });
     }
 
     [HttpPost]
