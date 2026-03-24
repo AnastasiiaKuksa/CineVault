@@ -3,8 +3,8 @@ using Microsoft.AspNetCore.Mvc;
 
 namespace CineVault.API.Controllers;
 
-[ApiVersion("1.0", Deprecated = true)]
-[ApiVersion("2.0")]
+[ApiVersion(1.0, Deprecated = true)]
+[ApiVersion(2.0)]
 [Route("api/v{version:apiVersion}/[controller]")]
 public class AppInfoController : ControllerBase
 {

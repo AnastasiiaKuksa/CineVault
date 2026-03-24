@@ -6,7 +6,7 @@ using Microsoft.AspNetCore.Mvc;
 
 namespace CineVault.API.Controllers;
 
-[ApiVersion("2.0")]
+[ApiVersion(2.0)]
 [Route("api/v{version:apiVersion}/Reviews/[action]")]
 public sealed class ReviewsV2Controller : ControllerBase
 {
