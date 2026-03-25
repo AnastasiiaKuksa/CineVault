@@ -4,8 +4,11 @@ using CineVault.API.Common.Responses;
 using CineVault.API.Controllers.MoviesV3;
 using CineVault.API.Controllers.Requests;
 using CineVault.API.Controllers.Responses;
+using CineVault.API.Data.Entities;
 using CineVault.API.Data.Interfaces;
+using Mapster;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
 
 namespace CineVault.API.Controllers;
 
@@ -15,11 +18,16 @@ public sealed class ReviewsV3Controller : BaseV3Controller
 {
     private readonly IReviewRepository reviewRepository;
     private readonly ILogger<ReviewsV3Controller> logger;
+    private readonly CineVaultDbContext dbContext;
 
-    public ReviewsV3Controller(IReviewRepository reviewRepository, ILogger<ReviewsV3Controller> logger)
+    public ReviewsV3Controller(
+        IReviewRepository reviewRepository,
+        ILogger<ReviewsV3Controller> logger,
+        CineVaultDbContext dbContext)
     {
         this.reviewRepository = reviewRepository;
         this.logger = logger;
+        this.dbContext = dbContext;
     }
 
     [HttpPost]
@@ -28,7 +36,7 @@ public sealed class ReviewsV3Controller : BaseV3Controller
     {
         this.logger.LogInformation("GetReviews requested. RequestId: {RequestId}", request.RequestId);
         var reviews = await this.reviewRepository.GetAllWithDetails();
-        var responses = reviews.Select(ReviewResponse.FromEntity);
+        var responses = reviews.Adapt<IEnumerable<ReviewResponse>>();
         this.logger.LogInformation("Retrieved {ReviewCount} reviews. RequestId: {RequestId}", responses.Count(), request.RequestId);
         return Ok(responses, request.RequestId, "Reviews retrieved successfully");
     }
@@ -50,7 +58,7 @@ public sealed class ReviewsV3Controller : BaseV3Controller
                 ApiVersion = "v3"
             });
         }
-        return Ok(ReviewResponse.FromEntity(review), request.RequestId, "Review retrieved successfully");
+        return Ok(review.Adapt<ReviewResponse>(), request.RequestId, "Review retrieved successfully");
     }
 
     [HttpPost]
@@ -58,10 +66,27 @@ public sealed class ReviewsV3Controller : BaseV3Controller
         [FromBody] ApiRequest<ReviewRequest> request)
     {
         this.logger.LogInformation("Creating review. RequestId: {RequestId}", request.RequestId);
-        var review = request.Data!.ToEntity();
+
+        // Unique review per user per movie - update if exists
+        var existing = await this.dbContext.Reviews
+            .FirstOrDefaultAsync(r => r.UserId == request.Data!.UserId && r.MovieId == request.Data.MovieId);
+
+        if (existing is not null)
+        {
+            this.logger.LogInformation("Review already exists for User {UserId} Movie {MovieId} - updating. RequestId: {RequestId}",
+                request.Data!.UserId, request.Data.MovieId, request.RequestId);
+            existing.Rating = request.Data!.Rating;
+            existing.Comment = request.Data.Comment;
+            await this.reviewRepository.Update(existing);
+            var updatedReview = await this.reviewRepository.GetByIdWithDetails(existing.Id);
+            return Ok(updatedReview!.Adapt<ReviewResponse>(), request.RequestId, "Review updated (already existed)");
+        }
+
+        var review = request.Data!.Adapt<Review>();
         await this.reviewRepository.Create(review);
-        this.logger.LogInformation("Review created. RequestId: {RequestId}", request.RequestId);
-        return Created(ReviewResponse.FromEntity(review), request.RequestId, "Review created successfully");
+        var reviewWithDetails = await this.reviewRepository.GetByIdWithDetails(review.Id);
+        this.logger.LogInformation("Review created with Id {ReviewId}. RequestId: {RequestId}", review.Id, request.RequestId);
+        return Created(reviewWithDetails!.Adapt<ReviewResponse>(), request.RequestId, "Review created successfully");
     }
 
     [HttpPost("{id}")]
@@ -81,9 +106,9 @@ public sealed class ReviewsV3Controller : BaseV3Controller
                 ApiVersion = "v3"
             });
         }
-        request.Data!.ApplyTo(review);
+        request.Data!.Adapt(review);
         await this.reviewRepository.Update(review);
-        return Ok(ReviewResponse.FromEntity(review), request.RequestId, "Review updated successfully");
+        return Ok(review.Adapt<ReviewResponse>(), request.RequestId, "Review updated successfully");
     }
 
     [HttpPost("{id}")]
