@@ -1,7 +1,7 @@
 ﻿using CineVault.API.Common.Responses;
 using Microsoft.AspNetCore.Mvc;
 
-namespace CineVault.API.Controllers;
+namespace CineVault.API.Controllers.MoviesV3;
 
 [ApiController]
 public abstract class BaseV3Controller : ControllerBase

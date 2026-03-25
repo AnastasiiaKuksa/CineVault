@@ -4,7 +4,7 @@ using CineVault.API.Controllers.Responses;
 using CineVault.API.Data.Interfaces;
 using Microsoft.AspNetCore.Mvc;
 
-namespace CineVault.API.Controllers;
+namespace CineVault.API.Controllers.MoviesV1;
 
 [ApiVersion(1.0, Deprecated = true)]
 [Route("api/v{version:apiVersion}/[controller]/[action]")]
@@ -26,7 +26,7 @@ public sealed class MoviesController : ControllerBase
         var movies = await this.movieRepository.GetAll();
         var response = movies.Select(MovieResponse.FromEntity);
         this.logger.LogInformation("Retrieved {MovieCount} movies successfully.", response.Count());
-        return base.Ok(response);
+        return Ok(response);
     }
 
     [HttpGet("{id}")]
@@ -37,10 +37,10 @@ public sealed class MoviesController : ControllerBase
         if (movie is null)
         {
             this.logger.LogWarning("Movie {MovieId} not found.", id);
-            return base.NotFound();
+            return NotFound();
         }
         this.logger.LogInformation("Movie {MovieId} retrieved successfully.", id);
-        return base.Ok(MovieResponse.FromEntity(movie));
+        return Ok(MovieResponse.FromEntity(movie));
     }
 
     [HttpPost]
@@ -50,7 +50,7 @@ public sealed class MoviesController : ControllerBase
         var movie = request.ToEntity();
         await this.movieRepository.Create(movie);
         this.logger.LogInformation("Movie {MovieTitle} created successfully.", request.Title);
-        return base.Created();
+        return Created();
     }
 
     [HttpPut("{id}")]
@@ -61,12 +61,12 @@ public sealed class MoviesController : ControllerBase
         if (movie is null)
         {
             this.logger.LogWarning("Movie {MovieId} not found for update.", id);
-            return base.NotFound();
+            return NotFound();
         }
         request.ApplyTo(movie);
         await this.movieRepository.Update(movie);
         this.logger.LogInformation("Movie {MovieId} updated successfully.", id);
-        return base.Ok();
+        return Ok();
     }
 
     [HttpDelete("{id}")]
@@ -77,10 +77,10 @@ public sealed class MoviesController : ControllerBase
         if (movie is null)
         {
             this.logger.LogWarning("Movie {MovieId} not found for deletion.", id);
-            return base.NotFound();
+            return NotFound();
         }
         await this.movieRepository.Delete(movie);
         this.logger.LogInformation("Movie {MovieId} deleted successfully.", id);
-        return base.NoContent();
+        return NoContent();
     }
 }

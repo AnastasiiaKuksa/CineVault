@@ -4,15 +4,15 @@ using CineVault.API.Controllers.Responses;
 using CineVault.API.Data.Interfaces;
 using Microsoft.AspNetCore.Mvc;
 
-namespace CineVault.API.Controllers;
+namespace CineVault.API.Controllers.MoviesV2;
 
-[ApiVersion(1.0, Deprecated = true)]
-[Route("api/v{version:apiVersion}/[controller]/[action]")]
-public sealed class ReviewsController : ControllerBase
+[ApiVersion(2.0)]
+[Route("api/v{version:apiVersion}/Reviews/[action]")]
+public sealed class ReviewsV2Controller : ControllerBase
 {
     private readonly IReviewRepository reviewRepository;
 
-    public ReviewsController(IReviewRepository reviewRepository)
+    public ReviewsV2Controller(IReviewRepository reviewRepository)
     {
         this.reviewRepository = reviewRepository;
     }
@@ -22,7 +22,12 @@ public sealed class ReviewsController : ControllerBase
     {
         var reviews = await this.reviewRepository.GetAllWithDetails();
         var responses = reviews.Select(ReviewResponse.FromEntity);
-        return base.Ok(responses);
+        return Ok(new
+        {
+            Version = "v2",
+            Count = responses.Count(),
+            Data = responses
+        });
     }
 
     [HttpGet("{id}")]
@@ -31,9 +36,13 @@ public sealed class ReviewsController : ControllerBase
         var review = await this.reviewRepository.GetByIdWithDetails(id);
         if (review is null)
         {
-            return base.NotFound();
+            return NotFound();
         }
-        return base.Ok(ReviewResponse.FromEntity(review));
+        return Ok(new
+        {
+            Version = "v2",
+            Data = ReviewResponse.FromEntity(review)
+        });
     }
 
     [HttpPost]
@@ -41,7 +50,7 @@ public sealed class ReviewsController : ControllerBase
     {
         var review = request.ToEntity();
         await this.reviewRepository.Create(review);
-        return base.Created();
+        return Created();
     }
 
     [HttpPut("{id}")]
@@ -50,11 +59,11 @@ public sealed class ReviewsController : ControllerBase
         var review = await this.reviewRepository.GetByIdWithDetails(id);
         if (review is null)
         {
-            return base.NotFound();
+            return NotFound();
         }
         request.ApplyTo(review);
         await this.reviewRepository.Update(review);
-        return base.Ok();
+        return Ok();
     }
 
     [HttpDelete("{id}")]
@@ -63,9 +72,9 @@ public sealed class ReviewsController : ControllerBase
         var review = await this.reviewRepository.GetByIdWithDetails(id);
         if (review is null)
         {
-            return base.NotFound();
+            return NotFound();
         }
         await this.reviewRepository.Delete(review);
-        return base.NoContent();
+        return NoContent();
     }
 }

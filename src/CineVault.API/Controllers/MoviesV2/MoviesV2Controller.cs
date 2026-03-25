@@ -4,7 +4,7 @@ using CineVault.API.Controllers.Responses;
 using CineVault.API.Data.Interfaces;
 using Microsoft.AspNetCore.Mvc;
 
-namespace CineVault.API.Controllers;
+namespace CineVault.API.Controllers.MoviesV2;
 
 [ApiVersion(2.0)]
 [Route("api/v{version:apiVersion}/Movies/[action]")]
@@ -22,7 +22,7 @@ public sealed class MoviesV2Controller : ControllerBase
     {
         var movies = await this.movieRepository.GetAll();
         var response = movies.Select(MovieResponse.FromEntity);
-        return base.Ok(new
+        return Ok(new
         {
             Version = "v2",
             Count = response.Count(),
@@ -36,9 +36,9 @@ public sealed class MoviesV2Controller : ControllerBase
         var movie = await this.movieRepository.GetById(id);
         if (movie is null)
         {
-            return base.NotFound();
+            return NotFound();
         }
-        return base.Ok(new
+        return Ok(new
         {
             Version = "v2",
             Data = MovieResponse.FromEntity(movie)
@@ -50,7 +50,7 @@ public sealed class MoviesV2Controller : ControllerBase
     {
         var movie = request.ToEntity();
         await this.movieRepository.Create(movie);
-        return base.Created();
+        return Created();
     }
 
     [HttpPut("{id}")]
@@ -59,11 +59,11 @@ public sealed class MoviesV2Controller : ControllerBase
         var movie = await this.movieRepository.GetById(id);
         if (movie is null)
         {
-            return base.NotFound();
+            return NotFound();
         }
         request.ApplyTo(movie);
         await this.movieRepository.Update(movie);
-        return base.Ok();
+        return Ok();
     }
 
     [HttpDelete("{id}")]
@@ -72,9 +72,9 @@ public sealed class MoviesV2Controller : ControllerBase
         var movie = await movieRepository.GetById(id);
         if (movie is null)
         {
-            return base.NotFound();
+            return NotFound();
         }
         await this.movieRepository.Delete(movie);
-        return base.NoContent();
+        return NoContent();
     }
 }
