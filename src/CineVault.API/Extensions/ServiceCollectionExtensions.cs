@@ -1,8 +1,11 @@
 ﻿using Asp.Versioning;
+using CineVault.API.Common.Mappings;
 using CineVault.API.Configurations;
 using CineVault.API.Data.Entities;
 using CineVault.API.Data.Interfaces;
 using CineVault.API.Data.Repositories;
+using Mapster;
+using MapsterMapper;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
 using Swashbuckle.AspNetCore.SwaggerGen;
@@ -56,6 +59,19 @@ public static class ServiceCollectionExtensions
         services.AddEndpointsApiExplorer();
         services.AddSwaggerGen();
         services.AddTransient<IConfigureOptions<SwaggerGenOptions>, ConfigureSwaggerOptions>();
+        return services;
+    }
+
+    public static IServiceCollection AddMapster(this IServiceCollection services, Type assemblyMarker)
+    {
+        var config = TypeAdapterConfig.GlobalSettings;
+        config.Scan(assemblyMarker.Assembly);
+
+        var mappingConfig = new MappingConfig();
+        mappingConfig.Register(config);
+
+        services.AddSingleton(config);
+        services.AddScoped<IMapper, ServiceMapper>();
         return services;
     }
 }

@@ -4,8 +4,11 @@ using CineVault.API.Common.Responses;
 using CineVault.API.Controllers.MoviesV3;
 using CineVault.API.Controllers.Requests;
 using CineVault.API.Controllers.Responses;
+using CineVault.API.Data.Entities;
 using CineVault.API.Data.Interfaces;
+using Mapster;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
 
 namespace CineVault.API.Controllers;
 
@@ -15,11 +18,16 @@ public sealed class UsersV3Controller : BaseV3Controller
 {
     private readonly IUserRepository userRepository;
     private readonly ILogger<UsersV3Controller> logger;
+    private readonly CineVaultDbContext dbContext;
 
-    public UsersV3Controller(IUserRepository userRepository, ILogger<UsersV3Controller> logger)
+    public UsersV3Controller(
+        IUserRepository userRepository,
+        ILogger<UsersV3Controller> logger,
+        CineVaultDbContext dbContext)
     {
         this.userRepository = userRepository;
         this.logger = logger;
+        this.dbContext = dbContext;
     }
 
     [HttpPost]
@@ -28,7 +36,7 @@ public sealed class UsersV3Controller : BaseV3Controller
     {
         this.logger.LogInformation("GetUsers requested. RequestId: {RequestId}", request.RequestId);
         var users = await this.userRepository.GetAll();
-        var response = users.Select(UserResponse.FromEntity);
+        var response = users.Adapt<IEnumerable<UserResponse>>();
         this.logger.LogInformation("Retrieved {UserCount} users. RequestId: {RequestId}", response.Count(), request.RequestId);
         return Ok(response, request.RequestId, "Users retrieved successfully");
     }
@@ -50,7 +58,7 @@ public sealed class UsersV3Controller : BaseV3Controller
                 ApiVersion = "v3"
             });
         }
-        return Ok(UserResponse.FromEntity(user), request.RequestId, "User retrieved successfully");
+        return Ok(user.Adapt<UserResponse>(), request.RequestId, "User retrieved successfully");
     }
 
     [HttpPost]
@@ -58,10 +66,49 @@ public sealed class UsersV3Controller : BaseV3Controller
         [FromBody] ApiRequest<UserRequest> request)
     {
         this.logger.LogInformation("Creating user {Username}. RequestId: {RequestId}", request.Data!.Username, request.RequestId);
-        var user = request.Data!.ToEntity();
+        var user = request.Data!.Adapt<User>();
         await this.userRepository.Create(user);
-        this.logger.LogInformation("User {Username} created. RequestId: {RequestId}", request.Data.Username, request.RequestId);
-        return Created(UserResponse.FromEntity(user), request.RequestId, "User created successfully");
+        var response = user.Adapt<UserResponse>();
+        this.logger.LogInformation("User {Username} created with Id {UserId}. RequestId: {RequestId}", user.Username, user.Id, request.RequestId);
+        return Created(response, request.RequestId, "User created successfully");
+    }
+
+    [HttpPost]
+    public async Task<ActionResult<ApiResponse<PagedResult<UserSearchResponse>>>> SearchUsers(
+        [FromBody] ApiRequest<UserSearchRequest> request)
+    {
+        var filter = request.Data!;
+        this.logger.LogInformation("SearchUsers requested. RequestId: {RequestId}", request.RequestId);
+
+        var query = this.dbContext.Users.AsQueryable();
+
+        if (!string.IsNullOrEmpty(filter.Username))
+            query = query.Where(u => u.Username.Contains(filter.Username));
+        if (!string.IsNullOrEmpty(filter.Email))
+            query = query.Where(u => u.Email.Contains(filter.Email));
+
+        query = filter.SortBy switch
+        {
+            "email" => query.OrderBy(u => u.Email),
+            _ => query.OrderBy(u => u.Username)
+        };
+
+        var total = await query.CountAsync();
+        var items = await query
+            .Skip((filter.Page - 1) * filter.PageSize)
+            .Take(filter.PageSize)
+            .ToListAsync();
+
+        var result = new PagedResult<UserSearchResponse>
+        {
+            Items = items.Adapt<List<UserSearchResponse>>(),
+            Total = total,
+            Page = filter.Page,
+            PageSize = filter.PageSize
+        };
+
+        this.logger.LogInformation("SearchUsers found {Total} users. RequestId: {RequestId}", total, request.RequestId);
+        return Ok(result, request.RequestId, "Users found");
     }
 
     [HttpPost("{id}")]
@@ -81,9 +128,9 @@ public sealed class UsersV3Controller : BaseV3Controller
                 ApiVersion = "v3"
             });
         }
-        request.Data!.ApplyTo(user);
+        request.Data!.Adapt(user);
         await this.userRepository.Update(user);
-        return Ok(UserResponse.FromEntity(user), request.RequestId, "User updated successfully");
+        return Ok(user.Adapt<UserResponse>(), request.RequestId, "User updated successfully");
     }
 
     [HttpPost("{id}")]
