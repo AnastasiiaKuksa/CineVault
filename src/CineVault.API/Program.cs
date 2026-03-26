@@ -14,6 +14,7 @@ builder.Services.AddControllers();
 builder.Services.AddRepositories();
 builder.Services.AddApiVersioningWithApiExplorer();
 builder.Services.AddSwaggerWithOptions();
+
 builder.Services.AddMapster(typeof(Program));
 
 var environment = builder.Environment.EnvironmentName;
