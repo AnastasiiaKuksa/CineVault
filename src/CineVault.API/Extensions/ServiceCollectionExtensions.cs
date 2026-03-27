@@ -24,8 +24,16 @@ public static class ServiceCollectionExtensions
             {
                 throw new InvalidOperationException("Connection string is not configured");
             }
-            options.UseInMemoryDatabase(connectionString);
+
+            options.UseSqlServer(connectionString, sqlOptions =>
+            {
+                sqlOptions.EnableRetryOnFailure(3);
+            });
+
+            options.EnableSensitiveDataLogging();
+            options.EnableDetailedErrors();
         });
+
         return services;
     }
 
@@ -51,6 +59,7 @@ public static class ServiceCollectionExtensions
             options.GroupNameFormat = "'v'VVV";
             options.SubstituteApiVersionInUrl = true;
         });
+
         return services;
     }
 
@@ -66,10 +75,8 @@ public static class ServiceCollectionExtensions
     {
         var config = TypeAdapterConfig.GlobalSettings;
         config.Scan(assemblyMarker.Assembly);
-
         var mappingConfig = new MappingConfig();
         mappingConfig.Register(config);
-
         services.AddSingleton(config);
         services.AddScoped<IMapper, ServiceMapper>();
         return services;
