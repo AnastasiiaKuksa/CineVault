@@ -62,12 +62,12 @@ public sealed class UsersV3Controller : BaseV3Controller
     }
 
     [HttpPost("{id}")]
-    public async Task<ActionResult<ApiResponse<UserStatsResponse>>> GetUserStats(
+    public async Task<ActionResult<ApiResponse<UserStatsResponse>>> GetUserStatus(
         int id, [FromBody] ApiRequest request)
     {
         this.logger.LogInformation("GetUserStats {UserId}. RequestId: {RequestId}", id, request.RequestId);
 
-        // Single optimized query
+        
         var stats = await this.dbContext.Users
             .AsNoTracking()
             .Where(u => u.Id == id)

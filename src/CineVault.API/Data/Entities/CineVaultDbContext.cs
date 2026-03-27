@@ -62,7 +62,7 @@ public sealed class CineVaultDbContext : DbContext
         {
             entity.Property(c => c.Text).HasMaxLength(1000);
 
-            // Fix cascade cycles: User -> Review -> Comment and User -> Comment
+            
             entity.HasOne(c => c.User)
                 .WithMany(u => u.Comments)
                 .HasForeignKey(c => c.UserId)
@@ -104,7 +104,7 @@ public sealed class CineVaultDbContext : DbContext
         {
             entity.HasIndex(l => new { l.UserId, l.CommentId }).IsUnique();
 
-            // Fix cascade cycles: User -> Comment -> CommentLike and User -> CommentLike
+            
             entity.HasOne(l => l.User)
                 .WithMany(u => u.CommentLikes)
                 .HasForeignKey(l => l.UserId)
