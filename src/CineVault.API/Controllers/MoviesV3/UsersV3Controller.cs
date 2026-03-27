@@ -35,9 +35,10 @@ public sealed class UsersV3Controller : BaseV3Controller
         [FromBody] ApiRequest request)
     {
         this.logger.LogInformation("GetUsers requested. RequestId: {RequestId}", request.RequestId);
-        var users = await this.userRepository.GetAll();
+        var users = await this.dbContext.Users
+            .AsNoTracking()
+            .ToListAsync();
         var response = users.Adapt<IEnumerable<UserResponse>>();
-        this.logger.LogInformation("Retrieved {UserCount} users. RequestId: {RequestId}", response.Count(), request.RequestId);
         return Ok(response, request.RequestId, "Users retrieved successfully");
     }
 
@@ -49,11 +50,10 @@ public sealed class UsersV3Controller : BaseV3Controller
         var user = await this.userRepository.GetById(id);
         if (user is null)
         {
-            this.logger.LogWarning("User {UserId} not found. RequestId: {RequestId}", id, request.RequestId);
             return base.NotFound(new ApiResponse<UserResponse>
             {
                 Success = false,
-                Message = $"User {id} not found",
+                Message = $"User with id {id} not found",
                 RequestId = request.RequestId,
                 ApiVersion = "v3"
             });
@@ -61,16 +61,79 @@ public sealed class UsersV3Controller : BaseV3Controller
         return Ok(user.Adapt<UserResponse>(), request.RequestId, "User retrieved successfully");
     }
 
+    [HttpPost("{id}")]
+    public async Task<ActionResult<ApiResponse<UserStatsResponse>>> GetUserStats(
+        int id, [FromBody] ApiRequest request)
+    {
+        this.logger.LogInformation("GetUserStats {UserId}. RequestId: {RequestId}", id, request.RequestId);
+
+        // Single optimized query
+        var stats = await this.dbContext.Users
+            .AsNoTracking()
+            .Where(u => u.Id == id)
+            .Select(u => new UserStatsResponse
+            {
+                UserId = u.Id,
+                Username = u.Username,
+                TotalReviews = u.Reviews.Count(),
+                AverageRating = u.Reviews.Any()
+                    ? Math.Round(u.Reviews.Average(r => (double)r.Rating), 2)
+                    : 0,
+                LastActivity = u.Reviews
+                    .OrderByDescending(r => r.CreatedAt)
+                    .Select(r => (DateTime?)r.CreatedAt)
+                    .FirstOrDefault(),
+                GenreStats = u.Reviews
+                    .Where(r => r.Movie != null && r.Movie.Genre != null)
+                    .GroupBy(r => r.Movie!.Genre!)
+                    .Select(g => new GenreStatDto
+                    {
+                        Genre = g.Key,
+                        ReviewCount = g.Count(),
+                        AverageRating = Math.Round(g.Average(r => (double)r.Rating), 2)
+                    })
+                    .OrderByDescending(g => g.ReviewCount)
+                    .ToList()
+            })
+            .FirstOrDefaultAsync();
+
+        if (stats is null)
+        {
+            return base.NotFound(new ApiResponse<UserStatsResponse>
+            {
+                Success = false,
+                Message = $"User with id {id} not found",
+                RequestId = request.RequestId,
+                ApiVersion = "v3"
+            });
+        }
+
+        return Ok(stats, request.RequestId, "User stats retrieved successfully");
+    }
+
     [HttpPost]
     public async Task<ActionResult<ApiResponse<UserResponse>>> CreateUser(
         [FromBody] ApiRequest<UserRequest> request)
     {
         this.logger.LogInformation("Creating user {Username}. RequestId: {RequestId}", request.Data!.Username, request.RequestId);
+
+        var emailExists = await this.dbContext.Users
+            .AnyAsync(u => u.Email == request.Data!.Email);
+        if (emailExists)
+        {
+            return base.BadRequest(new ApiResponse<UserResponse>
+            {
+                Success = false,
+                Message = $"User with email '{request.Data!.Email}' already exists",
+                RequestId = request.RequestId,
+                ApiVersion = "v3"
+            });
+        }
+
         var user = request.Data!.Adapt<User>();
         await this.userRepository.Create(user);
-        var response = user.Adapt<UserResponse>();
         this.logger.LogInformation("User {Username} created with Id {UserId}. RequestId: {RequestId}", user.Username, user.Id, request.RequestId);
-        return Created(response, request.RequestId, "User created successfully");
+        return Created(user.Adapt<UserResponse>(), request.RequestId, "User created successfully");
     }
 
     [HttpPost]
@@ -80,12 +143,14 @@ public sealed class UsersV3Controller : BaseV3Controller
         var filter = request.Data!;
         this.logger.LogInformation("SearchUsers requested. RequestId: {RequestId}", request.RequestId);
 
-        var query = this.dbContext.Users.AsQueryable();
+        var query = this.dbContext.Users.AsNoTracking().AsQueryable();
 
         if (!string.IsNullOrEmpty(filter.Username))
             query = query.Where(u => u.Username.Contains(filter.Username));
         if (!string.IsNullOrEmpty(filter.Email))
             query = query.Where(u => u.Email.Contains(filter.Email));
+        if (filter.CreatedAfter.HasValue)
+            query = query.Where(u => u.CreatedAt > filter.CreatedAfter.Value);
 
         query = filter.SortBy switch
         {
@@ -119,11 +184,10 @@ public sealed class UsersV3Controller : BaseV3Controller
         var user = await this.userRepository.GetById(id);
         if (user is null)
         {
-            this.logger.LogWarning("User {UserId} not found for update. RequestId: {RequestId}", id, request.RequestId);
             return base.NotFound(new ApiResponse<UserResponse>
             {
                 Success = false,
-                Message = $"User {id} not found",
+                Message = $"User with id {id} not found",
                 RequestId = request.RequestId,
                 ApiVersion = "v3"
             });
@@ -141,16 +205,17 @@ public sealed class UsersV3Controller : BaseV3Controller
         var user = await this.userRepository.GetById(id);
         if (user is null)
         {
-            this.logger.LogWarning("User {UserId} not found for deletion. RequestId: {RequestId}", id, request.RequestId);
             return base.NotFound(new ApiResponse<object>
             {
                 Success = false,
-                Message = $"User {id} not found",
+                Message = $"User with id {id} not found",
                 RequestId = request.RequestId,
                 ApiVersion = "v3"
             });
         }
-        await this.userRepository.Delete(user);
+        // Soft delete
+        user.IsDeleted = true;
+        await this.userRepository.Update(user);
         return base.Ok(new ApiResponse<object>
         {
             Success = true,

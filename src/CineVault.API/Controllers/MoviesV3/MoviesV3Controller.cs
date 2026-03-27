@@ -20,13 +20,20 @@ public sealed class MoviesV3Controller : BaseV3Controller
     private readonly IMovieRepository movieRepository;
     private readonly ILogger<MoviesV3Controller> logger;
     private readonly IMapper mapper;
-    private readonly CineVault.API.Data.Entities.CineVaultDbContext dbContext;
+    private readonly CineVaultDbContext dbContext;
+
+    // Compiled query for frequently used GetById
+    private static readonly Func<CineVaultDbContext, int, Task<Movie?>> GetMovieByIdCompiled =
+        EF.CompileAsyncQuery((CineVaultDbContext ctx, int id) =>
+            ctx.Movies
+                .Include(m => m.Reviews)
+                .FirstOrDefault(m => m.Id == id));
 
     public MoviesV3Controller(
         IMovieRepository movieRepository,
         ILogger<MoviesV3Controller> logger,
         IMapper mapper,
-        CineVault.API.Data.Entities.CineVaultDbContext dbContext)
+        CineVaultDbContext dbContext)
     {
         this.movieRepository = movieRepository;
         this.logger = logger;
@@ -39,7 +46,10 @@ public sealed class MoviesV3Controller : BaseV3Controller
         [FromBody] ApiRequest request)
     {
         this.logger.LogInformation("GetMovies requested. RequestId: {RequestId}", request.RequestId);
-        var movies = await this.movieRepository.GetAll();
+        var movies = await this.dbContext.Movies
+            .AsNoTracking()
+            .Include(m => m.Reviews)
+            .ToListAsync();
         var response = this.mapper.Map<IEnumerable<MovieResponse>>(movies);
         this.logger.LogInformation("Retrieved {MovieCount} movies. RequestId: {RequestId}", response.Count(), request.RequestId);
         return Ok(response, request.RequestId, "Movies retrieved successfully");
@@ -50,14 +60,14 @@ public sealed class MoviesV3Controller : BaseV3Controller
         int id, [FromBody] ApiRequest request)
     {
         this.logger.LogInformation("Movie {MovieId} requested. RequestId: {RequestId}", id, request.RequestId);
-        var movie = await this.movieRepository.GetById(id);
+        var movie = await GetMovieByIdCompiled(this.dbContext, id);
         if (movie is null)
         {
             this.logger.LogWarning("Movie {MovieId} not found. RequestId: {RequestId}", id, request.RequestId);
             return base.NotFound(new ApiResponse<MovieResponse>
             {
                 Success = false,
-                Message = $"Movie {id} not found",
+                Message = $"Movie with id {id} not found",
                 RequestId = request.RequestId,
                 ApiVersion = "v3"
             });
@@ -66,16 +76,83 @@ public sealed class MoviesV3Controller : BaseV3Controller
         return Ok(response, request.RequestId, "Movie retrieved successfully");
     }
 
+    [HttpPost("{id}")]
+    public async Task<ActionResult<ApiResponse<MovieDetailsResponse>>> GetMovieDetails(
+        int id, [FromBody] ApiRequest request)
+    {
+        this.logger.LogInformation("GetMovieDetails {MovieId}. RequestId: {RequestId}", id, request.RequestId);
+
+        // Single optimized query with Select - loads only needed fields
+        var details = await this.dbContext.Movies
+            .AsNoTracking()
+            .Where(m => m.Id == id)
+            .Select(m => new MovieDetailsResponse
+            {
+                Id = m.Id,
+                Title = m.Title,
+                Description = m.Description,
+                Genre = m.Genre,
+                Director = m.Director,
+                ReleaseDate = m.ReleaseDate,
+                AverageRating = m.Reviews.Any()
+                    ? Math.Round(m.Reviews.Average(r => (double)r.Rating), 2)
+                    : 0,
+                ReviewCount = m.Reviews.Count(),
+                Actors = m.MovieActors
+                    .Select(ma => ma.Actor!.FullName)
+                    .ToList(),
+                RecentReviews = m.Reviews
+                    .OrderByDescending(r => r.CreatedAt)
+                    .Take(5)
+                    .Select(r => new RecentReviewDto
+                    {
+                        Id = r.Id,
+                        Rating = r.Rating,
+                        Comment = r.Comment,
+                        Username = r.User!.Username,
+                        CreatedAt = r.CreatedAt
+                    })
+                    .ToList()
+            })
+            .FirstOrDefaultAsync();
+
+        if (details is null)
+        {
+            return base.NotFound(new ApiResponse<MovieDetailsResponse>
+            {
+                Success = false,
+                Message = $"Movie with id {id} not found",
+                RequestId = request.RequestId,
+                ApiVersion = "v3"
+            });
+        }
+
+        return Ok(details, request.RequestId, "Movie details retrieved successfully");
+    }
+
     [HttpPost]
     public async Task<ActionResult<ApiResponse<MovieCreatedResponse>>> CreateMovie(
         [FromBody] ApiRequest<MovieRequest> request)
     {
         this.logger.LogInformation("Creating movie {MovieTitle}. RequestId: {RequestId}", request.Data!.Title, request.RequestId);
+
+        var titleExists = await this.dbContext.Movies
+            .AnyAsync(m => m.Title == request.Data!.Title);
+        if (titleExists)
+        {
+            return base.BadRequest(new ApiResponse<MovieCreatedResponse>
+            {
+                Success = false,
+                Message = $"Movie with title '{request.Data!.Title}' already exists",
+                RequestId = request.RequestId,
+                ApiVersion = "v3"
+            });
+        }
+
         var movie = this.mapper.Map<Movie>(request.Data!);
         await this.movieRepository.Create(movie);
-        var response = new MovieCreatedResponse { Id = movie.Id, Title = movie.Title };
         this.logger.LogInformation("Movie {MovieTitle} created with Id {MovieId}. RequestId: {RequestId}", movie.Title, movie.Id, request.RequestId);
-        return Created(response, request.RequestId, "Movie created successfully");
+        return Created(new MovieCreatedResponse { Id = movie.Id, Title = movie.Title }, request.RequestId, "Movie created successfully");
     }
 
     [HttpPost]
@@ -98,12 +175,17 @@ public sealed class MoviesV3Controller : BaseV3Controller
         var filter = request.Data!;
         this.logger.LogInformation("SearchMovies requested. RequestId: {RequestId}", request.RequestId);
 
-        var query = this.dbContext.Movies.Include(m => m.Reviews).AsQueryable();
+        var query = this.dbContext.Movies
+            .AsNoTracking()
+            .Include(m => m.Reviews)
+            .AsQueryable();
 
+        if (!string.IsNullOrEmpty(filter.Title))
+            query = query.Where(m => m.Title.Contains(filter.Title)
+                || (m.Description != null && m.Description.Contains(filter.Title))
+                || (m.Director != null && m.Director.Contains(filter.Title)));
         if (!string.IsNullOrEmpty(filter.Genre))
             query = query.Where(m => m.Genre != null && m.Genre.Contains(filter.Genre));
-        if (!string.IsNullOrEmpty(filter.Title))
-            query = query.Where(m => m.Title.Contains(filter.Title));
         if (!string.IsNullOrEmpty(filter.Director))
             query = query.Where(m => m.Director != null && m.Director.Contains(filter.Director));
         if (filter.YearFrom.HasValue)
@@ -139,11 +221,10 @@ public sealed class MoviesV3Controller : BaseV3Controller
         var movie = await this.movieRepository.GetById(id);
         if (movie is null)
         {
-            this.logger.LogWarning("Movie {MovieId} not found for update. RequestId: {RequestId}", id, request.RequestId);
             return base.NotFound(new ApiResponse<MovieResponse>
             {
                 Success = false,
-                Message = $"Movie {id} not found",
+                Message = $"Movie with id {id} not found",
                 RequestId = request.RequestId,
                 ApiVersion = "v3"
             });
@@ -162,16 +243,18 @@ public sealed class MoviesV3Controller : BaseV3Controller
         var movie = await this.movieRepository.GetById(id);
         if (movie is null)
         {
-            this.logger.LogWarning("Movie {MovieId} not found for deletion. RequestId: {RequestId}", id, request.RequestId);
             return base.NotFound(new ApiResponse<object>
             {
                 Success = false,
-                Message = $"Movie {id} not found",
+                Message = $"Movie with id {id} not found",
                 RequestId = request.RequestId,
                 ApiVersion = "v3"
             });
         }
-        await this.movieRepository.Delete(movie);
+        // Soft delete
+        movie.IsDeleted = true;
+        await this.movieRepository.Update(movie);
+        this.logger.LogInformation("Movie {MovieId} soft deleted. RequestId: {RequestId}", id, request.RequestId);
         return base.Ok(new ApiResponse<object>
         {
             Success = true,
@@ -204,15 +287,12 @@ public sealed class MoviesV3Controller : BaseV3Controller
             var movie = await this.dbContext.Movies.FindAsync(id);
             if (movie is not null)
             {
-                this.dbContext.Movies.Remove(movie);
+                movie.IsDeleted = true;
                 result.DeletedIds.Add(id);
             }
         }
 
         await this.dbContext.SaveChangesAsync();
-        this.logger.LogInformation("BulkDelete completed. Deleted: {Deleted}, Skipped: {Skipped}. RequestId: {RequestId}",
-            result.DeletedIds.Count, result.Warnings.Count, request.RequestId);
-
         return Ok(result, request.RequestId, $"Deleted {result.DeletedIds.Count} movies, skipped {result.Warnings.Count}");
     }
 }
