@@ -16,9 +16,12 @@ public sealed class PagedResult<T>
 
 public sealed class UserSearchResponse
 {
-    public int Id { get; set; }
-    public string Username { get; set; } = null!;
-    public string Email { get; set; } = null!;
+    public string? Username { get; set; }
+    public string? Email { get; set; }
+    public DateTime? CreatedAfter { get; set; }
+    public string SortBy { get; set; } = "username";
+    public int Page { get; set; } = 1;
+    public int PageSize { get; set; } = 10;
 }
 
 public sealed class CommentResponse
