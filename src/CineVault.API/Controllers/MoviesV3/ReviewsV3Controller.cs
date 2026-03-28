@@ -1,4 +1,5 @@
-﻿using Asp.Versioning;
+﻿using System.Text.Json;
+using Asp.Versioning;
 using CineVault.API.Common.Requests;
 using CineVault.API.Common.Responses;
 using CineVault.API.Controllers.MoviesV3;
@@ -9,6 +10,7 @@ using CineVault.API.Data.Interfaces;
 using Mapster;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Caching.Distributed;
 
 namespace CineVault.API.Controllers;
 
@@ -19,15 +21,18 @@ public sealed class ReviewsV3Controller : BaseV3Controller
     private readonly IReviewRepository reviewRepository;
     private readonly ILogger<ReviewsV3Controller> logger;
     private readonly CineVaultDbContext dbContext;
+    private readonly IDistributedCache distributedCache;
 
     public ReviewsV3Controller(
         IReviewRepository reviewRepository,
         ILogger<ReviewsV3Controller> logger,
-        CineVaultDbContext dbContext)
+        CineVaultDbContext dbContext,
+        IDistributedCache distributedCache) : base()
     {
         this.reviewRepository = reviewRepository;
         this.logger = logger;
         this.dbContext = dbContext;
+        this.distributedCache = distributedCache;
     }
 
     [HttpPost]
@@ -137,4 +142,43 @@ public sealed class ReviewsV3Controller : BaseV3Controller
             ApiVersion = "v3"
         });
     }
+
+    [HttpPost("movies/{movieId:int}/reviews")]
+    public async Task<ActionResult<ApiResponse<IEnumerable<ReviewResponse>>>> GetReviewsByMovie(
+       int movieId, [FromBody] ApiRequest<object?> request)
+    {
+        logger.LogInformation("GetReviewsByMovie {MovieId} requested. RequestId: {RequestId}", movieId, request.RequestId);
+
+        var cacheKey = $"reviews_{movieId}";
+
+        var cachedBytes = await distributedCache.GetAsync(cacheKey);
+        if (cachedBytes is not null)
+        {
+            var cachedReviews = JsonSerializer.Deserialize<IEnumerable<ReviewResponse>>(cachedBytes)
+                    ?? Enumerable.Empty<ReviewResponse>();
+            logger.LogInformation("Reviews from distributed cache. MovieId: {MovieId}, RequestId: {RequestId}", movieId, request.RequestId);
+            return Ok(cachedReviews, request.RequestId, "Reviews from distributed cache");
+        }
+
+        logger.LogInformation("Reviews from DB. MovieId: {MovieId}, RequestId: {RequestId}", movieId, request.RequestId);
+
+        var reviews = await dbContext.Reviews
+            .AsNoTracking()
+            .Include(r => r.Movie)
+            .Include(r => r.User)
+            .Where(r => r.MovieId == movieId)
+            .ToListAsync();
+        var response = reviews.Adapt<IEnumerable<ReviewResponse>>();
+
+        var serialized = JsonSerializer.SerializeToUtf8Bytes(response);
+        await distributedCache.SetAsync(cacheKey, serialized, new DistributedCacheEntryOptions
+        {
+            AbsoluteExpirationRelativeToNow = TimeSpan.FromMinutes(1)
+        });
+
+        logger.LogInformation("Reviews for movie {MovieId} cached. RequestId: {RequestId}", movieId, request.RequestId);
+        return Ok(response, request.RequestId, "Reviews from DB");
+    }
+
+
 }

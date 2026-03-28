@@ -1,6 +1,9 @@
+using CineVault.API.Common.Mappings;
 using CineVault.API.Data.Entities;
 using CineVault.API.Extensions;
 using CineVault.API.Middleware;
+using Mapster;
+using MapsterMapper;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 
@@ -15,6 +18,17 @@ builder.Services.AddRepositories();
 builder.Services.AddApiVersioningWithApiExplorer();
 builder.Services.AddSwaggerWithOptions();
 builder.Services.AddMapster(typeof(Program));
+
+builder.Services.AddMemoryCache();
+
+builder.Services.AddDistributedSqlServerCache(options =>
+{
+    options.ConnectionString = builder.Configuration
+        .GetConnectionString("CineVaultDb");
+    options.SchemaName = "dbo";
+    options.TableName = "CacheTable";
+});
+
 
 var environment = builder.Environment.EnvironmentName;
 
