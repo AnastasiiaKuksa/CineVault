@@ -66,32 +66,48 @@ public sealed class ReviewsV3Controller : BaseV3Controller
         return Ok(review.Adapt<ReviewResponse>(), request.RequestId, "Review retrieved successfully");
     }
 
-    [HttpPost]
+    [HttpPost("create")]
     public async Task<ActionResult<ApiResponse<ReviewResponse>>> CreateReview(
-        [FromBody] ApiRequest<ReviewRequest> request)
+      [FromBody] ApiRequest<ReviewRequest> request)
     {
-        this.logger.LogInformation("Creating review. RequestId: {RequestId}", request.RequestId);
+        logger.LogInformation("Creating/updating review (v3) for movie {MovieId} by user {UserId}. RequestId: {RequestId}",
+            request.Data?.MovieId, request.Data?.UserId, request.RequestId);
 
-        // Unique review per user per movie - update if exists
-        var existing = await this.dbContext.Reviews
-            .FirstOrDefaultAsync(r => r.UserId == request.Data!.UserId && r.MovieId == request.Data.MovieId);
+        var existing = await dbContext.Reviews
+            .Include(r => r.Movie)
+            .Include(r => r.User)
+            .FirstOrDefaultAsync(r =>
+                r.UserId == request.Data!.UserId &&
+                r.MovieId == request.Data.MovieId);
 
         if (existing is not null)
         {
-            this.logger.LogInformation("Review already exists for User {UserId} Movie {MovieId} - updating. RequestId: {RequestId}",
-                request.Data!.UserId, request.Data.MovieId, request.RequestId);
             existing.Rating = request.Data!.Rating;
             existing.Comment = request.Data.Comment;
-            await this.reviewRepository.Update(existing);
-            var updatedReview = await this.reviewRepository.GetByIdWithDetails(existing.Id);
-            return Ok(updatedReview!.Adapt<ReviewResponse>(), request.RequestId, "Review updated (already existed)");
+            await dbContext.SaveChangesAsync();
+
+            //Інвалідація кешу після оновлення огляду
+            await distributedCache.RemoveAsync($"reviews_{request.Data.MovieId}");
+            logger.LogInformation("Cache invalidated for movie {MovieId} after review update", request.Data.MovieId);
+
+            return Ok(existing.Adapt<ReviewResponse>(), request.RequestId,
+                "Review updated (unique per user/movie)");
         }
 
         var review = request.Data!.Adapt<Review>();
-        await this.reviewRepository.Create(review);
-        var reviewWithDetails = await this.reviewRepository.GetByIdWithDetails(review.Id);
-        this.logger.LogInformation("Review created with Id {ReviewId}. RequestId: {RequestId}", review.Id, request.RequestId);
-        return Created(reviewWithDetails!.Adapt<ReviewResponse>(), request.RequestId, "Review created successfully");
+        await dbContext.Reviews.AddAsync(review);
+        await dbContext.SaveChangesAsync();
+
+        var created = await dbContext.Reviews
+            .Include(r => r.Movie)
+            .Include(r => r.User)
+            .FirstAsync(r => r.Id == review.Id);
+
+        //Інвалідація кешу після створення нового огляду
+        await distributedCache.RemoveAsync($"reviews_{request.Data.MovieId}");
+        logger.LogInformation("Cache invalidated for movie {MovieId} after review creation", request.Data.MovieId);
+
+        return Created(created.Adapt<ReviewResponse>(), request.RequestId, "Review created successfully");
     }
 
     [HttpPost("{id}")]
