@@ -34,7 +34,8 @@ builder.Services.AddDistributedSqlServerCache(options =>
 // 
 builder.Services.AddHostedService<MovieStatsUpdaterService>();
 
-
+// 
+builder.Services.AddHostedService<OldMoviesCleanerService>();
 
 var environment = builder.Environment.EnvironmentName;
 
