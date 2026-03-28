@@ -10,6 +10,7 @@ using Mapster;
 using MapsterMapper;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Caching.Memory;
 
 namespace CineVault.API.Controllers;
 
@@ -21,8 +22,10 @@ public sealed class MoviesV3Controller : BaseV3Controller
     private readonly ILogger<MoviesV3Controller> logger;
     private readonly IMapper mapper;
     private readonly CineVaultDbContext dbContext;
+    private readonly IMemoryCache memoryCache;
 
-    // Compiled query for frequently used GetById
+    private const string MovieSearchCacheKey = "movies_search_cache";
+
     private static readonly Func<CineVaultDbContext, int, Task<Movie?>> GetMovieByIdCompiled =
         EF.CompileAsyncQuery((CineVaultDbContext ctx, int id) =>
             ctx.Movies
@@ -30,16 +33,19 @@ public sealed class MoviesV3Controller : BaseV3Controller
                 .FirstOrDefault(m => m.Id == id));
 
     public MoviesV3Controller(
-        IMovieRepository movieRepository,
-        ILogger<MoviesV3Controller> logger,
-        IMapper mapper,
-        CineVaultDbContext dbContext)
+       IMovieRepository movieRepository,
+       ILogger<MoviesV3Controller> logger,
+       IMapper mapper,
+       CineVaultDbContext dbContext,
+       IMemoryCache memoryCache)
     {
         this.movieRepository = movieRepository;
         this.logger = logger;
         this.mapper = mapper;
         this.dbContext = dbContext;
+        this.memoryCache = memoryCache;
     }
+
 
     [HttpPost]
     public async Task<ActionResult<ApiResponse<IEnumerable<MovieResponse>>>> GetMovies(
@@ -295,4 +301,64 @@ public sealed class MoviesV3Controller : BaseV3Controller
         await this.dbContext.SaveChangesAsync();
         return Ok(result, request.RequestId, $"Deleted {result.DeletedIds.Count} movies, skipped {result.Warnings.Count}");
     }
+
+    [HttpPost("search")]
+    public async Task<ActionResult<ApiResponse<PagedResult<MovieResponse>>>> Search(
+       [FromBody] ApiRequest<MovieSearchRequest> request)
+    {
+        var filter = request.Data!;
+        this.logger.LogInformation("SearchMovies requested. RequestId: {RequestId}", request.RequestId);
+
+        if (this.memoryCache.TryGetValue(MovieSearchCacheKey, out PagedResult<MovieResponse>? cachedResult))
+        {
+            this.logger.LogInformation("Data from cache. RequestId: {RequestId}", request.RequestId);
+            return Ok(cachedResult!, request.RequestId, "Movies found (from cache)");
+        }
+
+        this.logger.LogInformation("Data from DB. RequestId: {RequestId}", request.RequestId);
+
+        var query = this.dbContext.Movies
+            .AsNoTracking()
+            .Include(m => m.Reviews)
+            .AsQueryable();
+
+        if (!string.IsNullOrEmpty(filter.Title))
+            query = query.Where(m => m.Title.Contains(filter.Title)
+                || (m.Description != null && m.Description.Contains(filter.Title))
+                || (m.Director != null && m.Director.Contains(filter.Title)));
+        if (!string.IsNullOrEmpty(filter.Genre))
+            query = query.Where(m => m.Genre != null && m.Genre.Contains(filter.Genre));
+        if (!string.IsNullOrEmpty(filter.Director))
+            query = query.Where(m => m.Director != null && m.Director.Contains(filter.Director));
+        if (filter.YearFrom.HasValue)
+            query = query.Where(m => m.ReleaseDate.HasValue && m.ReleaseDate.Value.Year >= filter.YearFrom.Value);
+        if (filter.YearTo.HasValue)
+            query = query.Where(m => m.ReleaseDate.HasValue && m.ReleaseDate.Value.Year <= filter.YearTo.Value);
+        if (filter.MinRating.HasValue)
+            query = query.Where(m => m.Reviews.Any() && m.Reviews.Average(r => r.Rating) >= filter.MinRating.Value);
+
+        var total = await query.CountAsync();
+        var items = await query
+            .Skip((filter.Page - 1) * filter.PageSize)
+            .Take(filter.PageSize)
+            .ToListAsync();
+
+        var result = new PagedResult<MovieResponse>
+        {
+            Items = this.mapper.Map<List<MovieResponse>>(items),
+            Total = total,
+            Page = filter.Page,
+            PageSize = filter.PageSize
+        };
+
+        this.memoryCache.Set(MovieSearchCacheKey, result, new MemoryCacheEntryOptions
+        {
+            AbsoluteExpirationRelativeToNow = TimeSpan.FromMinutes(3)
+        });
+
+        this.logger.LogInformation("SearchMovies found {Total} results, saved to cache. RequestId: {RequestId}", total, request.RequestId);
+        return Ok(result, request.RequestId, "Movies found");
+    }
+
+
 }
