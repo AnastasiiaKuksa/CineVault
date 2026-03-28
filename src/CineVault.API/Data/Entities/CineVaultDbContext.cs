@@ -17,6 +17,10 @@ public sealed class CineVaultDbContext : DbContext
     {
     }
 
+    // ── Нова таблиця статистики
+    public required DbSet<MovieStatistic> MovieStatistics { get; set; }
+
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         // ── Soft Delete global filters 
@@ -114,6 +118,23 @@ public sealed class CineVaultDbContext : DbContext
                 .WithMany(c => c.Likes)
                 .HasForeignKey(l => l.CommentId)
                 .OnDelete(DeleteBehavior.Cascade);
+        });
+
+
+        // ── MovieStatistic
+        modelBuilder.Entity<MovieStatistic>(entity =>
+        {
+            entity.HasKey(s => s.Id);
+
+            //Один запис статистики на фільм
+            entity.HasIndex(s => s.MovieId).IsUnique();
+
+            entity.HasOne(s => s.Movie)
+                .WithMany()
+                .HasForeignKey(s => s.MovieId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            entity.Property(s => s.AverageRating).HasPrecision(5, 2);
         });
     }
 }

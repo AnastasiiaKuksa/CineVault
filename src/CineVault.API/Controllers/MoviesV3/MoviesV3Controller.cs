@@ -47,6 +47,20 @@ public sealed class MoviesV3Controller : BaseV3Controller
     }
 
 
+    [HttpGet("statistics")]
+    public async Task<ActionResult<ApiResponse<List<MovieStatisticResponse>>>> GetStatistics()
+    {
+        this.logger.LogInformation("GetStatistics requested (v3)");
+
+        var stats = await this.dbContext.MovieStatistics
+            .AsNoTracking()
+            .ProjectToType<MovieStatisticResponse>()
+            .ToListAsync();
+
+        this.logger.LogInformation("GetStatistics returned {Count} records", stats.Count);
+        return Ok(stats, string.Empty, "Movie statistics retrieved");
+    }
+
     [HttpPost]
     public async Task<ActionResult<ApiResponse<IEnumerable<MovieResponse>>>> GetMovies(
         [FromBody] ApiRequest request)

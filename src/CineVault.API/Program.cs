@@ -1,4 +1,5 @@
 using CineVault.API.Common.Mappings;
+using CineVault.API.BackgroundServices;
 using CineVault.API.Data.Entities;
 using CineVault.API.Extensions;
 using CineVault.API.Middleware;
@@ -23,12 +24,18 @@ builder.Services.AddMemoryCache();
 
 builder.Services.AddDistributedSqlServerCache(options =>
 {
-    options.ConnectionString = builder.Configuration
-        .GetConnectionString("CineVaultDb");
+    options.ConnectionString = builder.Configuration.GetConnectionString("CineVaultDb");
     options.SchemaName = "dbo";
     options.TableName = "CacheTable";
 });
 
+
+
+// 
+builder.Services.AddHostedService<MovieStatsUpdaterService>();
+
+// 
+builder.Services.AddHostedService<OldMoviesCleanerService>();
 
 var environment = builder.Environment.EnvironmentName;
 
