@@ -1,9 +1,10 @@
-﻿using CineVault.API.Controllers.Responses;
+﻿
 using CineVault.API.Data.Entities;
+using CineVault.Domain.Interfaces;
 
 namespace CineVault.API.Data.Interfaces;
 
-public interface IMovieRepository
+public interface IMovieRepository 
 {
     Task<IReadOnlyList<Movie>> GetAll();
     Task<Movie?> GetById(int id);
