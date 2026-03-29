@@ -428,7 +428,7 @@ public sealed class MoviesV3Controller : BaseV3Controller
                 ApiVersion = "v3"
             });
 
-        OmdbSearchResponse? searchResult = await this.omdbService   // ← this.omdbService, не _omdbService
+        OmdbSearchResponse? searchResult = await this.omdbService  
             .SearchAsync(request.SearchFilter, request.YearOfRelease);
 
         if (searchResult is null || searchResult.Search.Count == 0)
@@ -439,7 +439,7 @@ public sealed class MoviesV3Controller : BaseV3Controller
         foreach (OmdbSearchItem item in searchResult.Search)
         {
             OmdbMovieResponse? details =
-                await this.omdbService.GetByIdOrTitleAsync(item.Title);  // ← this.omdbService
+                await this.omdbService.GetByIdOrTitleAsync(item.Title); 
 
             results.Add(new OmdbMovieSearchResponse
             {
@@ -462,6 +462,5 @@ public sealed class MoviesV3Controller : BaseV3Controller
 
         return Ok(results, string.Empty, "OMDb search completed");
     }
-
 
 }
