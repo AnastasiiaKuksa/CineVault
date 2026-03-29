@@ -81,4 +81,7 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IMapper, ServiceMapper>();
         return services;
     }
+
+
+
 }

@@ -12,6 +12,11 @@ public sealed class MovieResponse
     public string? Director { get; set; }
     public required double AverageRating { get; set; }
     public required int ReviewCount { get; set; }
+    /// нові поля
+    public string? Runtime { get; set; }
+    public string? Awards { get; set; }
+    public string? ImdbRating { get; set; }
+    public string? RottenTomatoesRating { get; set; }
 
     public static MovieResponse FromEntity(Movie movie)
     {

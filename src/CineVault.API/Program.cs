@@ -1,8 +1,11 @@
-using CineVault.API.Common.Mappings;
 using CineVault.API.BackgroundServices;
+using CineVault.API.Common.Mappings;
+using CineVault.API.Configurations;
 using CineVault.API.Data.Entities;
+using CineVault.API.Data.Interfaces;
 using CineVault.API.Extensions;
 using CineVault.API.Middleware;
+using CineVault.API.Services;
 using Mapster;
 using MapsterMapper;
 using Microsoft.AspNetCore.Mvc;
@@ -29,7 +32,18 @@ builder.Services.AddDistributedSqlServerCache(options =>
     options.TableName = "CacheTable";
 });
 
+// „итаЇмо налаштуванн€ з appsettings.json
+builder.Services.Configure<OmdbSettings>(
+    builder.Configuration.GetSection("Omdb"));
 
+// –еЇструЇмо HttpClient з retry-лог≥кою
+// якщо запит впав Ч спробуЇмо ще 1 раз
+builder.Services.AddHttpClient<IOmdbService, OmdbService>(client =>
+{
+    client.BaseAddress = new Uri(builder.Configuration["Omdb:BaseUrl"]!);
+    client.Timeout = TimeSpan.FromSeconds(30);
+})
+.AddStandardResilienceHandler();
 
 // 
 builder.Services.AddHostedService<MovieStatsUpdaterService>();
