@@ -5,6 +5,12 @@ VisualStudioVersion = 17.11.35431.28
 MinimumVisualStudioVersion = 10.0.40219.1
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "CineVault.API", "src\CineVault.API\CineVault.API.csproj", "{F88E42D1-C315-4131-B09B-EAE8B64EFA63}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "CineVault.Domain", "CineVault.Domain\CineVault.Domain.csproj", "{2556F2DB-167F-4014-B88E-7825ED0C71F8}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "CineVault.Application", "CineVault.Application\CineVault.Application.csproj", "{2ECD7670-A529-472A-BAA1-D98C48D9CDD7}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "CineVault.Infrastructure", "CineVault.Infrastructure\CineVault.Infrastructure.csproj", "{9621E87B-BA4E-4AA3-838A-129F4DAE0369}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -15,6 +21,18 @@ Global
 		{F88E42D1-C315-4131-B09B-EAE8B64EFA63}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{F88E42D1-C315-4131-B09B-EAE8B64EFA63}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{F88E42D1-C315-4131-B09B-EAE8B64EFA63}.Release|Any CPU.Build.0 = Release|Any CPU
+		{2556F2DB-167F-4014-B88E-7825ED0C71F8}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{2556F2DB-167F-4014-B88E-7825ED0C71F8}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{2556F2DB-167F-4014-B88E-7825ED0C71F8}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{2556F2DB-167F-4014-B88E-7825ED0C71F8}.Release|Any CPU.Build.0 = Release|Any CPU
+		{2ECD7670-A529-472A-BAA1-D98C48D9CDD7}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{2ECD7670-A529-472A-BAA1-D98C48D9CDD7}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{2ECD7670-A529-472A-BAA1-D98C48D9CDD7}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{2ECD7670-A529-472A-BAA1-D98C48D9CDD7}.Release|Any CPU.Build.0 = Release|Any CPU
+		{9621E87B-BA4E-4AA3-838A-129F4DAE0369}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{9621E87B-BA4E-4AA3-838A-129F4DAE0369}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{9621E87B-BA4E-4AA3-838A-129F4DAE0369}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{9621E87B-BA4E-4AA3-838A-129F4DAE0369}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

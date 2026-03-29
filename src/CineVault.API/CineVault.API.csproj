@@ -33,4 +33,9 @@
 	  <Folder Include="Migrations\" />
 	</ItemGroup>
 
+	<ItemGroup>
+	  <ProjectReference Include="..\..\CineVault.Application\CineVault.Application.csproj" />
+	  <ProjectReference Include="..\..\CineVault.Infrastructure\CineVault.Infrastructure.csproj" />
+	</ItemGroup>
+
 </Project>
