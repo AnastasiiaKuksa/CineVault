@@ -6,6 +6,8 @@ using CineVault.API.Controllers.Requests;
 using CineVault.API.Controllers.Responses;
 using CineVault.API.Data.Entities;
 using CineVault.API.Data.Interfaces;
+using CineVault.API.Requests;
+using CineVault.API.Responses.Omdb;
 using Mapster;
 using MapsterMapper;
 using Microsoft.AspNetCore.Mvc;
@@ -24,6 +26,8 @@ public sealed class MoviesV3Controller : BaseV3Controller
     private readonly CineVaultDbContext dbContext;
     private readonly IMemoryCache memoryCache;
 
+    private readonly IOmdbService omdbService;
+
     private const string MovieSearchCacheKey = "movies_search_cache";
 
     private static readonly Func<CineVaultDbContext, int, Task<Movie?>> GetMovieByIdCompiled =
@@ -37,13 +41,15 @@ public sealed class MoviesV3Controller : BaseV3Controller
        ILogger<MoviesV3Controller> logger,
        IMapper mapper,
        CineVaultDbContext dbContext,
-       IMemoryCache memoryCache)
+       IMemoryCache memoryCache,
+       IOmdbService omdbService)
     {
         this.movieRepository = movieRepository;
         this.logger = logger;
         this.mapper = mapper;
         this.dbContext = dbContext;
         this.memoryCache = memoryCache;
+        this.omdbService = omdbService;
     }
 
 
@@ -372,6 +378,89 @@ public sealed class MoviesV3Controller : BaseV3Controller
 
         this.logger.LogInformation("SearchMovies found {Total} results, saved to cache. RequestId: {RequestId}", total, request.RequestId);
         return Ok(result, request.RequestId, "Movies found");
+    }
+
+
+    [HttpGet("{id}")]
+    public async Task<ActionResult<ApiResponse<MovieResponse>>> GetById(int id)
+    {
+        var movie = await movieRepository.GetById(id);
+
+        if (movie is null)
+        {
+            return base.NotFound(new ApiResponse<MovieResponse>
+            {
+                Success = false,
+                Message = "Movie not found",
+                RequestId = string.Empty,  
+                ApiVersion = "v3"
+            });
+        }
+
+        var omdb = await omdbService.GetByIdOrTitleAsync(movie.Title);
+
+        var response = new MovieResponse
+        {
+            Id = movie.Id,
+            Title = movie.Title,
+            AverageRating = 0,
+            ReviewCount = 0,
+            Runtime = omdb?.Runtime,
+            Awards = omdb?.Awards,
+            ImdbRating = omdb?.imdbRating,
+            RottenTomatoesRating = omdb?.Ratings
+                .FirstOrDefault(r => r.Source == "Rotten Tomatoes")?.Value
+        };
+
+        return Ok(response, string.Empty, "Movie retrieved");
+    }
+
+    [HttpGet("omdb-search")]
+    public async Task<ActionResult<ApiResponse<List<OmdbMovieSearchResponse>>>> OmdbSearch(
+    [FromQuery] OmdbSearchRequest request)
+    {
+        if (!ModelState.IsValid)
+            return base.BadRequest(new ApiResponse<List<OmdbMovieSearchResponse>>
+            {
+                Success = false,
+                Message = "Invalid parameters",
+                RequestId = string.Empty,
+                ApiVersion = "v3"
+            });
+
+        OmdbSearchResponse? searchResult = await this.omdbService   // ← this.omdbService, не _omdbService
+            .SearchAsync(request.SearchFilter, request.YearOfRelease);
+
+        if (searchResult is null || searchResult.Search.Count == 0)
+            return Ok(new List<OmdbMovieSearchResponse>(), string.Empty, "No results found");
+
+        var results = new List<OmdbMovieSearchResponse>();
+
+        foreach (OmdbSearchItem item in searchResult.Search)
+        {
+            OmdbMovieResponse? details =
+                await this.omdbService.GetByIdOrTitleAsync(item.Title);  // ← this.omdbService
+
+            results.Add(new OmdbMovieSearchResponse
+            {
+                Title = item.Title,
+                ReleaseYear = item.Year,
+                Rated = details?.Rated,
+                Released = details?.Released,
+                Runtime = details?.Runtime,
+                Genre = details?.Genre,
+                Director = details?.Director,
+                Writer = details?.Writer,
+                Actors = details?.Actors,
+                Description = details?.Plot,
+                Awards = details?.Awards,
+                ImdbRating = details?.imdbRating,
+                RottenTomatoesRating = details?.Ratings
+                    .FirstOrDefault(r => r.Source == "Rotten Tomatoes")?.Value
+            });
+        }
+
+        return Ok(results, string.Empty, "OMDb search completed");
     }
 
 
